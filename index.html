@@ -525,8 +525,10 @@
   const dateAtOffset = offset => dateFormat.format(new Date(cutoff.getTime() + offset * day));
   let approvalDraft = null;
   let action = 'alerts';
-  let telegramReady = false;
-  let telegramSimulated = false;
+  const browserSimulation = window.location.origin !== 'http://127.0.0.1:8765';
+  let telegramReady = browserSimulation;
+  let telegramSimulated = browserSimulation;
+  let browserMessageId = 0;
   let sending = false;
 
   byId('cutoff').textContent = 'Fecha de corte simulada · ' + dateAtOffset(0);
@@ -922,13 +924,19 @@
     let ok = false;
     let feedback;
     try {
-      const response = await fetch('/api/telegram/' + kind, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({message})
-      });
-      const result = await response.json();
-      if (response.ok && result.ok) {
+      let result;
+      if (browserSimulation) {
+        result = {ok: true, simulated: true, message_id: ++browserMessageId};
+      } else {
+        const response = await fetch('/api/telegram/' + kind, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({message})
+        });
+        result = await response.json();
+        result.ok = response.ok && result.ok;
+      }
+      if (result.ok) {
         ok = true;
         if (isRestock) sentRestock.set(view.store, message);
         feedback = result.simulated ? 'Envío simulado · mensaje ' + result.message_id + '.'
@@ -1077,7 +1085,7 @@
   renderChannels();
   loadChainOptions();
   render();
-  if (window.location.origin === 'http://127.0.0.1:8765') {
+  if (!browserSimulation) {
     fetch('/api/telegram/status')
       .then(response => response.json())
       .then(status => {
